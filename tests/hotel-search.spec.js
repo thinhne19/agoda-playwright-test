@@ -2,7 +2,7 @@ const { test, expect } = require("@playwright/test");
 const HomePage = require("../pages/homePage");
 const bookingData = require("../test-data/bookingData");
 
-// Helper: chờ Agoda loading overlay biến mất
+// Wait for Agoda's loading overlay to disappear and return the first hotel result
 async function waitForSearchResults(page) {
   await page.locator('text=Just a moment').waitFor({ state: "hidden", timeout: 45000 }).catch(() => {});
   const firstHotel = page.locator('[data-selenium="hotel-name"]').first();
@@ -10,7 +10,7 @@ async function waitForSearchResults(page) {
   return firstHotel;
 }
 
-// ─── Test 1: Kiểm tra search ra kết quả ─────────────────────────────────────
+// Test case: Verify search results are displayed after submitting a hotel search
 test("Search results are displayed after submitting search", async ({ page }) => {
   const homePage = new HomePage(page);
 
@@ -20,11 +20,12 @@ test("Search results are displayed after submitting search", async ({ page }) =>
   await homePage.setGuests(bookingData);
   await homePage.clickSearch();
 
+  //Verify at least one hotel result is visible
   const firstHotel = await waitForSearchResults(page);
   await expect(firstHotel).toBeVisible();
 });
 
-// ─── Test 2: Kiểm tra giá hiển thị trên trang detail ────────────────────────
+// Test case: Verify hotel price is displayed on the detail page
 test("Hotel price is displayed on detail page", async ({ page, context }) => {
   const homePage = new HomePage(page);
 
@@ -34,20 +35,17 @@ test("Hotel price is displayed on detail page", async ({ page, context }) => {
   await homePage.setGuests(bookingData);
   await homePage.clickSearch();
 
+  //Click on the first available hotel result
   const firstHotel = await waitForSearchResults(page);
-
-  // Bắt sự kiện tab mới TRƯỚC khi click
   const detailPagePromise = context.waitForEvent("page", { timeout: 30000 });
   await firstHotel.click();
 
-  // Lấy tab mới và chờ load xong
+  // Wait for the hotel detail page to load
   const detailPage = await detailPagePromise;
   await detailPage.waitForLoadState("domcontentloaded");
-
-  // Chờ loading overlay trên detail page nếu có
   await detailPage.locator('text=Just a moment').waitFor({ state: "hidden", timeout: 45000 }).catch(() => {});
 
-  // Assert giá hiển thị
+  // Verify the hotel price is displayed
   const price = detailPage.locator('[data-element-name="final-price"]').first();
   await expect(price).toBeVisible({ timeout: 30000 });
 });

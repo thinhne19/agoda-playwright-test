@@ -2,7 +2,7 @@ class HomePage {
   constructor(page) {
     this.page = page;
 
-    // Tập trung selector vào một chỗ — dễ maintain
+    // Concentrating the selectors in one place — easier to maintain
     this.selectors = {
       searchBox: "placeholder=Enter a destination or property",
       dropdownOption: 'li[role="option"]',
@@ -17,7 +17,6 @@ class HomePage {
 
   async goto() {
     await this.page.goto("https://www.agoda.com/");
-    // Đóng popup nếu có, không throw nếu không có
     await this.page.keyboard.press("Escape");
   }
 
@@ -53,9 +52,6 @@ class HomePage {
   }
 
   async setGuests({ adults, children, childAges = [], rooms }) {
-    // Mở guest picker
-    await this.page.locator(this.selectors.occupancyAdults).click();
-
     // Rooms (default = 1)
     await this._adjustCounter(this.selectors.occupancyRooms, 1, rooms);
 
@@ -65,11 +61,11 @@ class HomePage {
     // Children (default = 0)
     await this._adjustCounter(this.selectors.occupancyChildren, 0, children);
 
-    // Chọn tuổi từng trẻ
+    // Pick child ages
     for (let i = 0; i < children; i++) {
       const age = childAges[i] ?? 10;
 
-      // Đợi dropdown thứ i visible — tăng timeout lên
+      // Open child age dropdown
       const dropdown = this.page
         .locator(this.selectors.childAgeDropdown)
         .nth(i);
@@ -84,11 +80,11 @@ class HomePage {
       await ageOption.waitFor({ state: "visible", timeout: 10000 });
       await ageOption.click();
 
-      // Đợi UI cập nhật xong trước khi sang đứa tiếp theo
+      // Wait for the page to load
       await this.page.waitForLoadState("domcontentloaded");
     }
 
-    // Đóng guest picker
+    // close guest picker
     await this.page.keyboard.press("Escape");
   }
 
@@ -97,12 +93,7 @@ class HomePage {
     await this.page.waitForLoadState("domcontentloaded");
   }
 
-  // ─── Private helpers ───────────────────────────────────────────────────────
-
-  /**
-   * Tăng counter từ defaultValue lên targetValue bằng cách click nút "+"
-   * Nếu target <= default thì không làm gì
-   */
+  // Increments a counter from its default value to the target value
   async _adjustCounter(sectionSelector, defaultValue, targetValue) {
     const times = targetValue - defaultValue;
     if (times <= 0) return;
