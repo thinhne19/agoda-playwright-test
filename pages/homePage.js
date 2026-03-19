@@ -1,10 +1,23 @@
 class HomePage {
   constructor(page) {
     this.page = page;
+
+    // Tập trung selector vào một chỗ — dễ maintain
+    this.selectors = {
+      searchBox: "placeholder=Enter a destination or property",
+      dropdownOption: 'li[role="option"]',
+      checkinBox: '[data-element-name="check-in-box"]',
+      searchButton: '[data-element-name="search-button"]',
+      occupancyRooms: '[data-selenium="occupancyRooms"]',
+      occupancyAdults: '[data-selenium="occupancyAdults"]',
+      occupancyChildren: '[data-selenium="occupancyChildren"]',
+      childAgeDropdown: '[data-element-name="occ-child-age-dropdown"]',
+    };
   }
 
   async goto() {
     await this.page.goto("https://www.agoda.com/");
+    // Đóng popup nếu có, không throw nếu không có
     await this.page.keyboard.press("Escape");
   }
 
@@ -15,89 +28,91 @@ class HomePage {
     await searchBox.click();
     await searchBox.fill(hotelName);
 
-    const dropdownItem = this.page.locator('li[role="option"]').first();
-    await dropdownItem.waitFor({ state: "visible", timeout: 10000 });
-    await dropdownItem.click();
-
-    await this.page.waitForLoadState("domcontentloaded");
+    const firstOption = this.page
+      .locator(this.selectors.dropdownOption)
+      .first();
+    await firstOption.waitFor({ state: "visible", timeout: 10000 });
+    await firstOption.click();
   }
+
 
   async setDates(checkIn, checkOut) {
     const format = (date) => date.toISOString().split("T")[0];
 
-    const calendar = this.page.locator('[class*="DayPicker"]').first();
-    const isCalendarVisible = await calendar.isVisible().catch(() => false);
+    const checkInCell = this.page.locator(
+      `[data-selenium-date="${format(checkIn)}"]`,
+    );
+    await checkInCell.waitFor({ state: "visible", timeout: 10000 });
+    await checkInCell.click();
 
-    if (!isCalendarVisible) {
-      await this.page.locator('[data-selenium="checkin-box"]').click();
-    }
-
-    await calendar.waitFor({ state: "visible", timeout: 5000 });
-    await this.page
-      .locator(`[data-selenium-date="${format(checkIn)}"]`)
-      .click();
-    await this.page
-      .locator(`[data-selenium-date="${format(checkOut)}"]`)
-      .click();
+    const checkOutCell = this.page.locator(
+      `[data-selenium-date="${format(checkOut)}"]`,
+    );
+    await checkOutCell.waitFor({ state: "visible", timeout: 10000 });
+    await checkOutCell.click();
   }
 
-  async setGuests({ adults, children, rooms }) {
-    // ===== ROOMS ===== (default = 1)
-    for (let i = 1; i < rooms; i++) {
-      await this.page
-        .locator('[data-selenium="occupancyRooms"] button')
-        .last()
-        .click();
-    }
+  async setGuests({ adults, children, childAges = [], rooms }) {
+    // Mở guest picker
+    await this.page.locator(this.selectors.occupancyAdults).click();
 
-    // ===== ADULTS ===== (default = 2)
-    for (let i = 2; i < adults; i++) {
-      await this.page
-        .locator('[data-selenium="occupancyAdults"] button')
-        .last()
-        .click();
-    }
+    // Rooms (default = 1)
+    await this._adjustCounter(this.selectors.occupancyRooms, 1, rooms);
 
-    // ===== CHILDREN ===== (default = 0)
+    // Adults (default = 2)
+    await this._adjustCounter(this.selectors.occupancyAdults, 2, adults);
+
+    // Children (default = 0)
+    await this._adjustCounter(this.selectors.occupancyChildren, 0, children);
+
+    // Chọn tuổi từng trẻ
     for (let i = 0; i < children; i++) {
-      await this.page
-        .locator('[data-selenium="occupancyChildren"] button')
-        .last()
-        .click();
-    }
+      const age = childAges[i] ?? 10;
 
-    // chọn tuổi child (nếu có)
-    for (let i = 0; i < children; i++) {
+      // Đợi dropdown thứ i visible — tăng timeout lên
       const dropdown = this.page
-        .locator('[data-element-name="occ-child-age-dropdown"]')
+        .locator(this.selectors.childAgeDropdown)
         .nth(i);
+      await dropdown.waitFor({ state: "visible", timeout: 10000 }); // tăng 5000 → 10000
 
       await dropdown.click();
 
-      const age = 10;
+      const ageOption = this.page.locator(
+        `[data-testid="child-ages-dropdown-${i}-${age}"]`,
+      );
+      
+      await ageOption.waitFor({ state: "visible", timeout: 10000 });
+      await ageOption.click();
 
-      await this.page
-        .locator(`[data-testid="child-ages-dropdown-${i}-${age}"]`)
-        .click();
+      // Đợi UI cập nhật xong trước khi sang đứa tiếp theo
+      await this.page.waitForLoadState("domcontentloaded");
     }
 
-    // đóng box
+    // Đóng guest picker
     await this.page.keyboard.press("Escape");
   }
 
-  // Helper: click một button N lần
-  async _clickNTimes(selector, times) {
-    if (times <= 0) return;
-    const btn = this.page.locator(selector).first();
-    await btn.waitFor({ state: "visible", timeout: 5000 });
-    for (let i = 0; i < times; i++) {
-      await btn.click();
-      await this.page.waitForTimeout(300);
-    }
+  async clickSearch() {
+    await this.page.locator(this.selectors.searchButton).click();
+    await this.page.waitForLoadState("domcontentloaded");
   }
 
-  async clickSearch() {
-    await this.page.locator('[data-element-name="search-button"]').click();
+  // ─── Private helpers ───────────────────────────────────────────────────────
+
+  /**
+   * Tăng counter từ defaultValue lên targetValue bằng cách click nút "+"
+   * Nếu target <= default thì không làm gì
+   */
+  async _adjustCounter(sectionSelector, defaultValue, targetValue) {
+    const times = targetValue - defaultValue;
+    if (times <= 0) return;
+
+    const incrementBtn = this.page.locator(`${sectionSelector} button`).last();
+    await incrementBtn.waitFor({ state: "visible", timeout: 5000 });
+
+    for (let i = 0; i < times; i++) {
+      await incrementBtn.click();
+    }
   }
 }
 
